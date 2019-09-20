@@ -1,0 +1,165 @@
+#ТЗ - со всех АРМ домена получить информацию о статусе критичных служб. Полученную информацию сохранить в CSV файл на сетевом ресурсе.
+#Задаем переменную для хранения текущей даты в формате год-месяц-день-часы-минуты
+$date = (Get-Date).tostring("yyyyMMddhhmm")
+#Задаем месторасположения итогового файла со статусом служб. В название файла добавляется текущая дата из переменной $date
+$CriticalServicestFile = 'D:\'+$date + 'criticalservicestatus.csv'
+#Задаем месторасположения файла с перечнем компьютеров с которыми не удалось установить соединение. В название файла добавляется текущая дата из переменной $date
+$OutputFileError = 'D:\'+$date + 'connectionfailed.csv'
+#Задаем месторасположения итогового файла со списком УЗ с правами локального администратора. В название файла добавляется текущая дата из переменной $date
+$AdminGroupFile = 'D:\'+$date + 'localadmins.csv'
+#Задаем месторасположения итогового файла со списком расшаренных папок на компьютерах. В название файла добавляется текущая дата из переменной $date
+$LocalSharesFile = 'D:\'+$date + 'sharedfolders.csv'
+#Задаем месторасположения файла с перечнем компьютеров с включенным протоколом IPv6. В название файла добавляется текущая дата из переменной $date
+$IPv6Output = 'D:\'+$date + 'ipv6enabled.csv' 
+#Задаем месторасположения итогового файла со списком профилей на компьютерах. В название файла добавляется текущая дата из переменной $date
+$LocalProfilesOutput = 'D:\'+$date + 'localprofiles.csv'
+#Задаем месторасположения итогового файла со списком парметров UAC. В название файла добавляется текущая дата из переменной $date
+$UACSettingsOutput = 'D:\'+$date + 'uacsettings.csv'
+#Задаем переменную с масивом компьютеров - в дальнейшем информация будет собираться из AD
+$pclist = "HOME", "192.168.0.105", "192.168.0.106"
+#Задаем хеш-таблицу для хранения информации о статусе служб
+$OutputArray = @()
+#Задаем хеш-таблицу для хранения информации об УЗ с правами локального администратора
+$AdminGroupContent = @()
+#Задаем хеш-таблицу для хранения информаци о компьютерах, с которыми не удалось установить соединение
+$pcstatuserror = @()
+#Задаем переменную с перечнем критических служб
+$CriticalServices = "bits", "winrm"
+#Задаем хеш-таблицу для хранения информаци о компьютерах, с включенным протоколом IPv6
+$IPv6Enabled = @()
+#Задаем хеш-таблицу для хранения информаци о расшареных папках на компьютере
+$LocalShares = @()
+#Задаем хеш-таблицу для хранения информаци о профилях на компьютере
+$LocalProfiles = @()
+#Задаем хеш-таблицу для хранения информаци о настройка UAC на компьютере
+$UACSettings = @()
+# Задаем переменную для обращению к ветке реестра, содержащую информацию об UAC
+$valueUAC = Get-ItemProperty HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System
+
+Write-Host `n"Process is running"`n
+
+Switch ($valueUAC.EnableLUA) {
+
+    0 {$UAC = 'Disabled'}
+     
+    1 {$UAC = '(Default) = Enabled'}
+
+    Default {$UAC = 'Unable to determine'}
+    } #Заменяем вывод числового значение параметра на описание
+
+Switch ($valueUAC.ConsentPromptBehaviorAdmin) {
+
+    0 {$BehaviorAdmin = 'Elevate without prompting'}
+     
+    1 {$BehaviorAdmin = 'Prompt for credentials on the secure desktop'}
+
+    2 {$BehaviorAdmin = 'Prompt for consent on the secure desktop'}
+
+    3 {$BehaviorAdmin = 'Prompt for credentials'}
+
+    4 {$BehaviorAdmin = 'Prompt for consent'}
+
+    5 {$BehaviorAdmin = '(Default) = Prompt for consent for non-Windows binaries'}
+
+    Default {$BehaviorAdmin = 'Unable to determine'}
+    } #Заменяем вывод числового значение параметра на описание
+
+Switch ($valueUAC.ConsentPromptBehaviorUser) {
+
+    0 {$BehaviorUser = 'Automatically deny elevation requests'}
+     
+    1 {$BehaviorUser = 'Prompt for credentials on the secure desktop'}
+
+    3 {$BehaviorUser = '(Default) = Prompt for credentials'} 
+
+    Default {$BehaviorUser = 'Unable to determine'}
+    } #Заменяем вывод числового значение параметра на описание
+
+Switch ($valueUAC.EnableSecureUIAPaths) {
+
+    0 {$UIAPaths = 'Disabled'}
+     
+    1 {$UIAPaths = '(Default) = Enabled'}
+
+    Default {$UIAPaths = 'Unable to determine'}
+    } #Заменяем вывод числового значение параметра на описание
+
+Switch ($valueUAC.PromptOnSecureDesktop) {
+
+    0 {$SecureDesktop = 'Disabled'}
+     
+    1 {$SecureDesktop = '(Default) = Enabled'}
+
+    Default {$SecureDesktop = 'Unable to determine'}
+    } #Заменяем вывод числового значение параметра на описание
+
+Switch ($valueUAC.EnableUIADesktopToggle) {
+
+    0 {$DesktopToggle = '(Default) = Disabled'}
+     
+    1 {$DesktopToggle = 'Enabled'}
+
+    Default {$DesktopToggle = 'Unable to determine'}
+    } #Заменяем вывод числового значение параметра на описание
+
+Switch ($valueUAC.EnableInstallerDetection) {
+
+    0 {$InstallerDetection = 'Disabled (default for enterprise)'}
+     
+    1 {$InstallerDetection = 'Enabled (default for home)'}
+
+    Default {$InstallerDetection = 'Unable to determine'}
+    } #Заменяем вывод числового значение параметра на описание
+
+Switch ($valueUAC.ValidateAdminCodeSignatures) {
+
+    0 {$AdminCodeSignatures = '(Default) = Disabled'}
+     
+    1 {$AdminCodeSignatures = 'Enabled'}
+
+    Default {$AdminCodeSignatures = 'Unable to determine'}
+    } #Заменяем вывод числового значение параметра на описание
+
+Switch ($valueUAC.EnableVirtualization) {
+
+    0 {$EnableVirtualization = 'Disabled'}
+     
+    1 {$EnableVirtualization = '(Default) = Enabled'}
+
+    Default {$EnableVirtualization = 'Unable to determine'}
+    } #Заменяем вывод числового значение параметра на описание
+
+#В цикле для каждого компьютера из переменной $pclist проверяем доступность. В случае доступности собираем информацию с компьютера. Если компьютер не доступен, то записываем его адрес в $pcstatuserror
+ForEach ($pc in $pclist) 
+{
+if(( Test-Connection -Count 1 -ComputerName $pc -Quiet) -eq $true) 
+{$OutputArray += Get-Service -ComputerName $pc -Name $CriticalServices | select name, status, MachineName #В массив сохраняется информация об имени и статусе службы, а также адрес машины на которой она выполняется
+  #$AdminGroupContent += Get-LocalGroupMember -SID S-1-5-32-544 | select SID | Get-LocalUser #В массив сохраняется информация об УЗ с правами локального администратора.Если нужно только активных (| Where-Object -Property Enabled -eq True). Можно использовать только с PS 5.1 (на Win10) и выше
+  $IPv6Enabled += Get-NetAdapterBinding -ComponentID ms_tcpip6 | Where-Object Enabled -match true | select SystemName, Name, InterfaceDescription, Description, Enabled #В массив сохраняется информация о компьютерах с включенным IPv6
+  $AdminGroupContent += Get-WmiObject win32_groupuser | Where-Object { ($_.GroupComponent -match ‘administrators') -or ($_.GroupComponent -match ‘Администраторы’)} | ForEach-Object {[wmi]$_.PartComponent } | select PSComputerName, Caption, Description, Disabled, Name, PasswordExpires, PasswordRequired, SID, Status #В массив сохраняется информация об УЗ с правами локального администратора
+  $LocalShares += Get-WmiObject -Class Win32_Share | Where-Object {$_.Name -notlike '*$'} | select PSComputerName, Caption, Path, Status #В массив сохраняется информация о расшареных папках на компьютере
+  $LocalProfiles += Get-WmiObject win32_userprofile | select @{LABEL=”last used”;EXPRESSION={$_.ConvertToDateTime($_.lastusetime)}}, LocalPath, SID, PSComputerName #В массив сохраняется информация о профилях на компьютере, добавляется время последнего использования профиля
+  $UACSettings += New-Object -TypeName psobject #Создаем новый объект и помещаем в него информацию о параметрах UAC на каждом из доступных компьютеров
+    $UACSettings | Add-Member -MemberType NoteProperty -Name EnableLUA -Value $UAC -ErrorAction SilentlyContinue  #Run all administrators in Admin Approval Mode
+    $UACSettings | Add-Member -MemberType NoteProperty -Name ConsentPromptBehaviorAdmin -Value $BehaviorAdmin -ErrorAction SilentlyContinue #Behavior of the elevation prompt for administrators in Admin Approval Mode
+    $UACSettings | Add-Member -MemberType NoteProperty -Name ConsentPromptBehaviorUser -Value $BehaviorUser -ErrorAction SilentlyContinue   #Behavior of the elevation prompt for standard users
+    $UACSettings | Add-Member -MemberType NoteProperty -Name EnableSecureUIAPaths -Value $UIAPaths -ErrorAction SilentlyContinue  #Only elevate UIAccess applications that are installed in secure locations \Program Files, including subfolders   \Windows\system32  \Program Files (x86), including subfolders for 64-bit versions of Windows
+    $UACSettings | Add-Member -MemberType NoteProperty -Name PromptOnSecureDesktop -Value $SecureDesktop -ErrorAction SilentlyContinue  #Switch to the secure desktop when prompting for elevation
+    $UACSettings | Add-Member -MemberType NoteProperty -Name EnableUIADesktopToggle -Value $DesktopToggle -ErrorAction SilentlyContinue  #Allow UIAccess applications to prompt for elevation without using the secure desktop
+    $UACSettings | Add-Member -MemberType NoteProperty -Name EnableInstallerDetection -Value $InstallerDetection -ErrorAction SilentlyContinue  #Detect application installations and prompt for elevation
+    $UACSettings | Add-Member -MemberType NoteProperty -Name ValidateAdminCodeSignatures -Value $AdminCodeSignatures -ErrorAction SilentlyContinue  #Only elevate executables that are signed and validated
+    $UACSettings | Add-Member -MemberType NoteProperty -Name EnableVirtualization -Value $EnableVirtualization -ErrorAction SilentlyContinue  #Virtualize file and registry write failures to per-user locations
+    $UACSettings | Add-Member -MemberType NoteProperty -Name ComputerName -Value $pc -ErrorAction SilentlyContinue 
+  }
+  else {$pcstatuserror += $pc } #В переменную записывается адрес недоступного компьютера
+}
+#Сохраняем информацию о статусе служб в итоговый файл
+$OutputArray | Export-Csv -Path $CriticalServicestFile
+#Сохраняем информацию о недоступных компьютерах в файл
+$pcstatuserror > $OutputFileError
+#Сохраняем полученную информацию в соответствующие файлы
+$AdminGroupContent | Export-Csv -Path $AdminGroupFile -Encoding UTF8
+$IPv6Enabled | Export-Csv -Path $IPv6Output -Encoding UTF8
+$LocalShares | Export-Csv -Path $LocalSharesFile -Encoding UTF8
+$LocalProfiles | Export-Csv -Path $LocalProfilesOutput -Encoding UTF8
+$UACSettings | Export-Csv -Path $UACSettingsOutput
